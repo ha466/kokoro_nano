@@ -47,3 +47,12 @@ In a fresh Colab notebook with T4 GPU enabled, simply run:
 * **`config.json`**: Student architecture hyperparameter configuration.
 * **`load_model.py`**: Safe model loader for inference.
 * **`kokoro_en_7m.pth`**: Pre-trained baseline weights for warm start.
+
+---
+
+## Credits & Acknowledgements
+
+* **Base Distillation & Architecture**: [`oddadmix/Kokoro-7M-Distill`](https://huggingface.co/oddadmix/Kokoro-7M-Distill) by **oddadmix** for the ultra-compact 7.48M student architecture, training configurations, and pre-trained weights.
+* **Original Teacher Model**: [`hexgrad/Kokoro-82M`](https://huggingface.co/hexgrad/Kokoro-82M) by **hexgrad** for the high-quality 82M open-weight TTS model.
+* **Generative Architecture**: Based on [StyleTTS 2](https://github.com/yl4579/StyleTTS2) (Yinghao Aaron Li et al.).
+
