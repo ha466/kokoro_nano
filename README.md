@@ -1,49 +1,49 @@
 # Kokoro-7M 2-Voice Training on Google Colab (T4 GPU)
 
-This package contains everything needed to train the 7.48M Kokoro student with **1 Female (`af_bella`) and 1 Male (`am_adam`)** voice on a free Google Colab T4 GPU.
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ha466/kokoro_nano/blob/main/colab_training.ipynb)
+
+This repository contains everything needed to train the 7.48M Kokoro student with **1 Female (`af_bella`) and 1 Male (`am_adam`)** voice on a free Google Colab T4 GPU.
 
 ---
 
 ## Quick Start on Google Colab
 
-### Method 1: Using the Jupyter Notebook (`colab_training.ipynb`)
+### Option 1: Open Directly in Colab (Recommended)
 
-1. Open [Google Colab](https://colab.research.google.com/).
-2. Click **File** $\rightarrow$ **Upload notebook** and upload [`colab_training.ipynb`](./colab_training.ipynb).
-3. Set your runtime to GPU:
-   * Go to **Runtime** $\rightarrow$ **Change runtime type** $\rightarrow$ Select **T4 GPU**.
-4. Upload this `cloud` folder to your Colab session:
-   * Zip the `cloud` folder on your PC (`cloud.zip`).
-   * In the Colab file browser on the left, upload `cloud.zip`.
-   * Run in a cell: `!unzip -q cloud.zip && cp -r cloud/* .`
-5. Run the cells in order:
-   * **Cell 1**: Verify GPU.
-   * **Cell 2**: Install requirements (`pip install -r requirements.txt`).
-   * **Cell 3**: Generate teacher dataset (`generate_teacher_dataset.py`).
-   * **Cell 4**: Run training (`train_student.py`).
-   * **Cell 5**: Listen to generated audio from both female and male voices.
-   * **Cell 6**: Download the trained `student.pth` checkpoint.
+1. Click the **[Open In Colab](https://colab.research.google.com/github/ha466/kokoro_nano/blob/main/colab_training.ipynb)** badge above.
+2. Set runtime to GPU: **Runtime** $\rightarrow$ **Change runtime type** $\rightarrow$ Select **T4 GPU**.
+3. Run the cells in order:
+   * **Step 0**: Clone repository (`git clone https://github.com/ha466/kokoro_nano.git`).
+   * **Step 1**: Verify GPU.
+   * **Step 2**: Install requirements (`pip install -r requirements.txt`).
+   * **Step 3**: Generate teacher dataset (`generate_teacher_dataset.py`).
+   * **Step 4**: Run distillation training (`train_student.py`).
+   * **Step 5**: Test speech generation and listen to both voices.
+   * **Step 6**: Download the trained checkpoint bundle.
 
 ---
 
-### Method 2: One-Command Execution via Terminal / Script
+### Option 2: Clone from a Blank Colab Notebook
 
-If running in a Colab code cell:
+In a fresh Colab notebook with T4 GPU enabled, simply run:
+
 ```bash
+!git clone https://github.com/ha466/kokoro_nano.git
+%cd kokoro_nano
 !bash run_colab.sh
 ```
 
 ---
 
-## Contents of this `cloud/` Package
+## Contents of this Repository
 
-* **`colab_training.ipynb`**: Interactive notebook with visual audio playback.
-* **`requirements.txt`**: Pinned Python dependencies for Colab environment.
+* **`colab_training.ipynb`**: Interactive notebook with visual audio playback and automated git clone.
+* **`requirements.txt`**: Pinned Python dependencies for the Colab environment.
 * **`run_colab.sh`**: Automated shell execution script.
 * **`training/generate_teacher_dataset.py`**: Paired 2-voice teacher dataset generator.
-* **`training/train_student.py`**: Distillation trainer with 2-voice support.
+* **`training/train_student.py`**: Distillation trainer with 2-voice style conditioning.
 * **`training/styletts2_gan/`**: Multi-Period & Multi-Resolution GAN discriminators and loss functions.
 * **`kokoro_patched/`**: Vendored Kokoro model architecture supporting custom decoder dimensions.
 * **`config.json`**: Student architecture hyperparameter configuration.
 * **`load_model.py`**: Safe model loader for inference.
-* **`kokoro_en_7m.pth`**: Pre-trained weights for optional warm start.
+* **`kokoro_en_7m.pth`**: Pre-trained baseline weights for warm start.
