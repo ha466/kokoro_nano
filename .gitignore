@@ -1,0 +1,13 @@
+# Do NOT upload trained output modal folder
+modal/
+modal/*
+
+# Python cache & temporary files
+__pycache__/
+*.py[cod]
+*$py.class
+.ipynb_checkpoints/
+
+# Generated audio
+*.wav
+*.mp3
