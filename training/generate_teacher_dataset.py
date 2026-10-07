@@ -160,7 +160,12 @@ def main():
             voice_pack = voices[item["speaker"]]
             refs.append(voice_pack[min(len(ids) - 1, voice_pack.shape[0] - 1)])
 
-        ref = torch.stack(refs).to(dev)
+        ref = torch.stack(refs)
+        # Some voice packs expose each style slice as [1, 256].  Stacking them
+        # produces [B, 1, 256], while KModel expects [B, 256].
+        if ref.dim() == 3 and ref.shape[1] == 1:
+            ref = ref.squeeze(1)
+        ref = ref.to(dev)
         input_ids = input_ids.to(dev)
         with torch.no_grad():
             audio_batch, duration_batch = teacher_model.forward_with_tokens(

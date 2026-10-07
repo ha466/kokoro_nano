@@ -98,6 +98,15 @@ class KModel(torch.nn.Module):
         speed: float = 1,
         input_lengths: Optional[torch.LongTensor] = None,
     ) -> tuple[torch.FloatTensor, torch.LongTensor]:
+        # Voice packs can yield either [B, 256] or [B, 1, 256] after a
+        # per-utterance style slice is stacked.  The network expects the
+        # former; normalize the singleton sequence dimension here so every
+        # caller (including batched dataset generation) is safe.
+        if ref_s.dim() == 3 and ref_s.shape[1] == 1:
+            ref_s = ref_s.squeeze(1)
+        if ref_s.dim() != 2:
+            raise ValueError(f"ref_s must have shape [batch, style], got {tuple(ref_s.shape)}")
+
         # ``input_ids`` may contain right-padding when a caller synthesizes a
         # batch.  Keeping the real lengths lets the encoder ignore that padding.
         if input_lengths is None:
