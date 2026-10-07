@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "attrs>=23.0.0",
+    "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
     "huggingface-hub>=0.20.0",
     "librosa>=0.10.0",
     "loguru>=0.7.0",
@@ -14,7 +15,7 @@ dependencies = [
     "scipy>=1.11.0",
     "soundfile>=0.12.1",
     "soxr>=0.3.0",
-    "spacy>=3.7.0",
+    "spacy>=3.8.0,<3.9.0",
     "torch>=2.0.0",
     "torchaudio>=2.0.0",
     "transformers>=4.40.0",

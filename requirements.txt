@@ -3,7 +3,9 @@ torchaudio>=2.0.0
 transformers>=4.40.0
 huggingface_hub>=0.20.0
 misaki[en]>=0.6.0
-spacy>=3.7.0
+spacy>=3.8.0,<3.9.0
+# Keep the English pipeline in the same environment as spaCy.
+en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
 soundfile>=0.12.1
 loguru>=0.7.0
 scipy>=1.11.0

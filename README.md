@@ -76,8 +76,10 @@ through `uv run`:
 ```bash
 python -m pip install --quiet --upgrade uv
 uv sync
-uv run python -m spacy download en_core_web_sm
 ```
+
+The English spaCy model is included as a project dependency, so do not run
+`spacy download` separately; `uv sync` installs it into `.venv`.
 
 ---
 

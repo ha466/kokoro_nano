@@ -9,7 +9,6 @@ echo "=== 2. Installing Dependencies ==="
 # pyproject.toml and uv.lock.
 python -m pip install --quiet --upgrade uv
 uv sync
-uv run python -m spacy download en_core_web_sm || true
 
 echo "=== 3. Fetching Sentences & Generating Teacher Dataset ==="
 # Fetch 3000 sentences for real training (or supply your own sentences.txt)
