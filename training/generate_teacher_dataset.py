@@ -179,8 +179,12 @@ def main():
 
         for row, item in enumerate(batch):
             length = int(lengths[row].item())
-            dur_list = duration_batch[row, :length].cpu().tolist()
-            audio_np = audio_batch[row].float().cpu().numpy()
+            # The upstream-compatible one-clip path returns unbatched tensors;
+            # the padded multi-clip path retains a leading batch dimension.
+            dur_tensor = duration_batch if duration_batch.dim() == 1 else duration_batch[row, :length]
+            audio_tensor = (audio_batch if audio_batch.dim() == 1 else audio_batch[row]).squeeze()
+            dur_list = dur_tensor.cpu().tolist()
+            audio_np = audio_tensor.float().cpu().numpy()
 
             # Expected sample length: sum(dur) * 600
             expected_samples = int(sum(dur_list)) * 600

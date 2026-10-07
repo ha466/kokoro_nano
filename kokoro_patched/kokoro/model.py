@@ -116,6 +116,34 @@ class KModel(torch.nn.Module):
         else:
             input_lengths = input_lengths.to(input_ids.device, dtype=torch.long)
 
+        # Preserve the original inference graph for the overwhelmingly common
+        # one-clip path.  Besides avoiding needless padding work, this keeps
+        # single-clip generation byte-for-byte compatible with the upstream
+        # Kokoro implementation.  The padded graph below is only required for
+        # a genuine multi-item batch.
+        if input_ids.shape[0] == 1 and int(input_lengths[0]) == input_ids.shape[1]:
+            text_mask = torch.arange(input_lengths.max()).unsqueeze(0).expand(
+                input_lengths.shape[0], -1).type_as(input_lengths)
+            text_mask = torch.gt(text_mask + 1, input_lengths.unsqueeze(1)).to(self.device)
+            bert_dur = self.bert(input_ids, attention_mask=(~text_mask).int())
+            d_en = self.bert_encoder(bert_dur).transpose(-1, -2)
+            s = ref_s[:, 128:]
+            d = self.predictor.text_encoder(d_en, s, input_lengths, text_mask)
+            x, _ = self.predictor.lstm(d)
+            duration = self.predictor.duration_proj(x)
+            duration = torch.sigmoid(duration).sum(axis=-1) / speed
+            pred_dur = torch.round(duration).clamp(min=1).long().squeeze()
+            indices = torch.repeat_interleave(
+                torch.arange(input_ids.shape[1], device=self.device), pred_dur)
+            pred_aln_trg = torch.zeros((input_ids.shape[1], indices.shape[0]), device=self.device)
+            pred_aln_trg[indices, torch.arange(indices.shape[0])] = 1
+            pred_aln_trg = pred_aln_trg.unsqueeze(0).to(self.device)
+            en = d.transpose(-1, -2) @ pred_aln_trg
+            F0_pred, N_pred = self.predictor.F0Ntrain(en, s)
+            t_en = self.text_encoder(input_ids, input_lengths, text_mask)
+            asr = t_en @ pred_aln_trg
+            return self.decoder(asr, F0_pred, N_pred, ref_s[:, :128]).squeeze(), pred_dur
+
         text_mask = torch.arange(input_lengths.max()).unsqueeze(0).expand(input_lengths.shape[0], -1).type_as(input_lengths)
         text_mask = torch.gt(text_mask+1, input_lengths.unsqueeze(1)).to(self.device)
         bert_dur = self.bert(input_ids, attention_mask=(~text_mask).int())
