@@ -242,7 +242,15 @@ def main():
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
 
     rows = [json.loads(l) for l in open(a.index, encoding="utf-8")]
+    if not rows:
+        raise RuntimeError(
+            f"No records found in {a.index}. Generate the teacher dataset successfully before training: "
+            "uv run python training/generate_teacher_dataset.py ...")
     rows = [r for r in rows if sum(r["dur"]) >= a.crop + 2]
+    if not rows:
+        raise RuntimeError(
+            f"No clips in {a.index} are long enough for --crop {a.crop}. "
+            "Use longer source sentences or reduce --crop.")
     train_rows, eval_rows = (rows, []) if a.holdout <= 0 else (rows[: -a.holdout], rows[-a.holdout:])
     if not train_rows:
         train_rows = rows

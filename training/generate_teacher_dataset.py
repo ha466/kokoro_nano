@@ -122,14 +122,6 @@ def main():
     bin_file = out_path / "audio.i16.bin"
     idx_file = out_path / "index.jsonl"
 
-    bin_fp = open(bin_file, "wb")
-    idx_fp = open(idx_file, "w", encoding="utf-8")
-
-    current_offset = 0
-    generated_count = 0
-    speaker_counts = {"female": 0, "male": 0}
-    total_audio_sec = 0.0
-
     # Convert text before inference.  Invalid or over-length text is reported
     # instead of silently disappearing from a large generated dataset.
     examples = []
@@ -145,6 +137,20 @@ def main():
 
     if skipped:
         print(f"[!] Skipped {skipped:,} empty or over-length sentences")
+    if not examples:
+        raise RuntimeError("No valid sentences were available; dataset outputs were left unchanged.")
+
+    # Keep the previous successful dataset intact if inference fails midway.
+    # The completed temporary files are atomically promoted only at the end.
+    tmp_bin_file = out_path / "audio.i16.bin.tmp"
+    tmp_idx_file = out_path / "index.jsonl.tmp"
+    bin_fp = open(tmp_bin_file, "wb")
+    idx_fp = open(tmp_idx_file, "w", encoding="utf-8")
+
+    current_offset = 0
+    generated_count = 0
+    speaker_counts = {"female": 0, "male": 0}
+    total_audio_sec = 0.0
 
     print(f"[*] Generating {len(examples):,} teacher clips into {out_path} "
           f"(batch size {args.batch_size})...")
@@ -210,6 +216,8 @@ def main():
 
     bin_fp.close()
     idx_fp.close()
+    tmp_bin_file.replace(bin_file)
+    tmp_idx_file.replace(idx_file)
 
     print(f"\n[+] Dataset generation complete!")
     print(f"    Total clips: {generated_count}")
