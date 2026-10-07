@@ -240,6 +240,12 @@ def main():
     if a.sr != 24000:
         print(f"[*] {a.sr} Hz: {SPF} samples per frame at {FRAME_HZ} Hz", flush=True)
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
+    # Make an in-progress run self-contained as soon as it starts.  This lets
+    # users test ``student.pth`` at an intermediate checkpoint instead of
+    # waiting for the final training step to receive config.json.
+    if Path(a.config).exists():
+        import shutil
+        shutil.copy2(a.config, out / "config.json")
 
     rows = [json.loads(l) for l in open(a.index, encoding="utf-8")]
     if not rows:
@@ -276,6 +282,9 @@ def main():
         PACKS["male"] = torch.load(m_path, map_location="cpu", weights_only=True)
         if pack is None:
             pack = PACKS["female"]
+        import shutil
+        shutil.copy2(f_path, out / "voice_female.pt")
+        shutil.copy2(m_path, out / "voice_male.pt")
         print(f"[*] 2-voice packs loaded from {v_dir}: female ({PACKS['female'].shape}) & male ({PACKS['male'].shape})", flush=True)
     if a.bilingual:
         import _env  # noqa: F401
@@ -497,17 +506,6 @@ def main():
                             **({"sched_g": sched_g.state_dict()} if sched_g else {})}, tmp)
                 os.replace(tmp, ck)
                 torch.save(model.state_dict(), out / "student.pth")
-    # Save a complete self-contained inference bundle in out/
-    if a.two_voices:
-        import shutil
-        data_dir = Path(a.index).parent
-        for vf in ("voice_female.pt", "voice_male.pt"):
-            src = data_dir / vf
-            if src.exists():
-                shutil.copy2(src, out / vf)
-    if Path(a.config).exists():
-        import shutil
-        shutil.copy2(a.config, out / "config.json")
     print(f"[+] done at step {step}. Complete model bundle saved to {out}", flush=True)
 
 
