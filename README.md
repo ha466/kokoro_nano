@@ -15,7 +15,7 @@ This repository contains everything needed to train the 7.48M Kokoro student wit
 3. Run the cells in order:
    * **Step 0**: Clone repository (`git clone https://github.com/ha466/kokoro_nano.git`).
    * **Step 1**: Verify GPU.
-   * **Step 2**: Install requirements (`pip install -r requirements.txt`).
+   * **Step 2**: Create the locked `uv` environment (`uv sync`).
    * **Step 3**: Generate teacher dataset (`generate_teacher_dataset.py`).
    * **Step 4**: Run distillation training (`train_student.py`).
    * **Step 5**: Test speech generation and listen to both voices.
@@ -38,7 +38,8 @@ In a fresh Colab notebook with T4 GPU enabled, simply run:
 ## Contents of this Repository
 
 * **`colab_training.ipynb`**: Interactive notebook with visual audio playback and automated git clone.
-* **`requirements.txt`**: Pinned Python dependencies for the Colab environment.
+* **`pyproject.toml`** and **`uv.lock`**: Canonical, locked `uv` project dependencies.
+* **`requirements.txt`**: Compatibility dependency list for tools that cannot use `uv`.
 * **`run_colab.sh`**: Automated shell execution script.
 * **`training/generate_teacher_dataset.py`**: Paired 2-voice teacher dataset generator.
 * **`training/train_student.py`**: Distillation trainer with 2-voice style conditioning.
@@ -47,6 +48,36 @@ In a fresh Colab notebook with T4 GPU enabled, simply run:
 * **`config.json`**: Student architecture hyperparameter configuration.
 * **`load_model.py`**: Safe model loader for inference.
 * **`kokoro_en_7m.pth`**: Pre-trained baseline weights for warm start.
+
+## Faster Dataset Generation
+
+The teacher generator supports batched synthesis. On a Colab T4, start with
+four clips per batch and lower the value if you encounter an out-of-memory
+error:
+
+```bash
+uv run python training/generate_teacher_dataset.py \
+  --texts sentences.txt \
+  --female-voice af_bella \
+  --male-voice am_adam \
+  --batch-size 4 \
+  --out-dir dist_twovoice
+```
+
+Each batch is right-padded only for inference; `index.jsonl` and
+`audio.i16.bin` still contain the original, individually trimmed clips.
+
+## Fast dependency setup with uv
+
+`uv` resolves and installs the project dependencies in parallel. `pyproject.toml`
+and `uv.lock` are the source of truth; every project command should be launched
+through `uv run`:
+
+```bash
+python -m pip install --quiet --upgrade uv
+uv sync
+uv run python -m spacy download en_core_web_sm
+```
 
 ---
 

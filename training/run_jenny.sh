@@ -14,9 +14,7 @@
 # these) and training on them tripled free-running WER, 0.041 -> 0.145.
 set -u
 cd /opt/projects/math-gsk8/tts7
-PY=/home/ahmed-wasfy/Documents/projects/kikiri-tts/.venv/bin/python
-
-$PY -u train_student.py --steps 40000 --batch 8 --lr 5e-5 \
+uv run python -u train_student.py --steps 40000 --batch 8 --lr 5e-5 \
     --mel-weight 5 --sil-weight 100 --slm-weight 1 --slm-adv-weight 0.2 \
     --init-from ../tts5/runs/en7m_slm/last.pt \
     --index data/index_ctc.jsonl --bin dist/audio.i16.bin \

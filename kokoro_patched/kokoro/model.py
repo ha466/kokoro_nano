@@ -95,14 +95,17 @@ class KModel(torch.nn.Module):
         self,
         input_ids: torch.LongTensor,
         ref_s: torch.FloatTensor,
-        speed: float = 1
+        speed: float = 1,
+        input_lengths: Optional[torch.LongTensor] = None,
     ) -> tuple[torch.FloatTensor, torch.LongTensor]:
-        input_lengths = torch.full(
-            (input_ids.shape[0],), 
-            input_ids.shape[-1], 
-            device=input_ids.device,
-            dtype=torch.long
-        )
+        # ``input_ids`` may contain right-padding when a caller synthesizes a
+        # batch.  Keeping the real lengths lets the encoder ignore that padding.
+        if input_lengths is None:
+            input_lengths = torch.full(
+                (input_ids.shape[0],), input_ids.shape[-1],
+                device=input_ids.device, dtype=torch.long)
+        else:
+            input_lengths = input_lengths.to(input_ids.device, dtype=torch.long)
 
         text_mask = torch.arange(input_lengths.max()).unsqueeze(0).expand(input_lengths.shape[0], -1).type_as(input_lengths)
         text_mask = torch.gt(text_mask+1, input_lengths.unsqueeze(1)).to(self.device)
@@ -113,16 +116,24 @@ class KModel(torch.nn.Module):
         x, _ = self.predictor.lstm(d)
         duration = self.predictor.duration_proj(x)
         duration = torch.sigmoid(duration).sum(axis=-1) / speed
-        pred_dur = torch.round(duration).clamp(min=1).long().squeeze()
-        indices = torch.repeat_interleave(torch.arange(input_ids.shape[1], device=self.device), pred_dur)
-        pred_aln_trg = torch.zeros((input_ids.shape[1], indices.shape[0]), device=self.device)
-        pred_aln_trg[indices, torch.arange(indices.shape[0])] = 1
-        pred_aln_trg = pred_aln_trg.unsqueeze(0).to(self.device)
-        en = d.transpose(-1, -2) @ pred_aln_trg
+        pred_dur = torch.round(duration).clamp(min=1).long()
+        # Do not synthesize padding tokens.  Each utterance has a different
+        # duration, so align to the longest one and let downstream callers trim
+        # the generated waveform using its duration sum.
+        positions = torch.arange(input_ids.shape[1], device=self.device)
+        pred_dur = pred_dur * (positions.unsqueeze(0) < input_lengths.unsqueeze(1))
+        frame_lengths = pred_dur.sum(dim=1)
+        max_frames = int(frame_lengths.max().item())
+        pred_aln_trg = torch.zeros(
+            (input_ids.shape[0], input_ids.shape[1], max_frames), device=self.device)
+        for batch_index in range(input_ids.shape[0]):
+            indices = torch.repeat_interleave(positions, pred_dur[batch_index])
+            pred_aln_trg[batch_index, indices, torch.arange(indices.numel(), device=self.device)] = 1
+        en = torch.bmm(d.transpose(-1, -2), pred_aln_trg)
         F0_pred, N_pred = self.predictor.F0Ntrain(en, s)
         t_en = self.text_encoder(input_ids, input_lengths, text_mask)
-        asr = t_en @ pred_aln_trg
-        audio = self.decoder(asr, F0_pred, N_pred, ref_s[:, :128]).squeeze()
+        asr = torch.bmm(t_en, pred_aln_trg)
+        audio = self.decoder(asr, F0_pred, N_pred, ref_s[:, :128])
         return audio, pred_dur
 
     def forward(

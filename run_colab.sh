@@ -5,25 +5,29 @@ echo "=== 1. Checking GPU ==="
 nvidia-smi
 
 echo "=== 2. Installing Dependencies ==="
-pip install -r requirements.txt
-python -m spacy download en_core_web_sm || true
+# Bootstrap uv once, then create the reproducible project environment from
+# pyproject.toml and uv.lock.
+python -m pip install --quiet --upgrade uv
+uv sync
+uv run python -m spacy download en_core_web_sm || true
 
 echo "=== 3. Fetching Sentences & Generating Teacher Dataset ==="
 # Fetch 3000 sentences for real training (or supply your own sentences.txt)
 if [ ! -f "sentences.txt" ]; then
     echo "Fetching 3000 clean sentences..."
-    python training/fetch_sentences.py --count 3000 --out sentences.txt
+    uv run python training/fetch_sentences.py --count 3000 --out sentences.txt
 fi
 
-python training/generate_teacher_dataset.py \
+uv run python training/generate_teacher_dataset.py \
     --texts sentences.txt \
     --female-voice af_bella \
     --male-voice am_adam \
+    --batch-size 4 \
     --out-dir dist_twovoice
 
 echo "=== 4. Training 7.48M Student Model on GPU ==="
 # T4 GPU handles batch size 16 easily at ~0.15s/step
-python training/train_student.py \
+uv run python training/train_student.py \
     --index dist_twovoice/index.jsonl \
     --bin dist_twovoice/audio.i16.bin \
     --config config.json \

@@ -1,6 +1,8 @@
 """Generate distillation dataset from hexgrad/Kokoro-82M teacher with two voices (1 Female, 1 Male).
 
-Alternates sentences 50/50 between the female voice and male voice.
+Alternates sentences 50/50 between the female voice and male voice.  It can
+also synthesize padded batches on a GPU, substantially reducing teacher-model
+overhead for large corpora.
 Dumps:
   1. audio.i16.bin: packed continuous int16 24 kHz PCM audio.
   2. index.jsonl: per-sentence metadata with phoneme ids, teacher-aligned durations,
@@ -58,9 +60,13 @@ def main():
                     help="Output directory for index.jsonl and audio.i16.bin (default: dist_twovoice)")
     ap.add_argument("--max-samples", type=int, default=None,
                     help="Maximum number of sentences to process (optional)")
+    ap.add_argument("--batch-size", type=int, default=1,
+                    help="Teacher synthesis batch size (default: 1; 4 is a good T4 starting point)")
     ap.add_argument("--device", default=None,
                     help="Device to run inference on ('cuda' or 'cpu', default: auto)")
     args = ap.parse_args()
+    if args.batch_size < 1:
+        ap.error("--batch-size must be at least 1")
 
     dev = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
     print(f"[*] Initializing teacher pipeline on {dev}...")
@@ -124,66 +130,76 @@ def main():
     speaker_counts = {"female": 0, "male": 0}
     total_audio_sec = 0.0
 
-    print(f"[*] Generating teacher speech into {out_path}...")
+    # Convert text before inference.  Invalid or over-length text is reported
+    # instead of silently disappearing from a large generated dataset.
+    examples = []
+    skipped = 0
     for i, text in enumerate(sentences):
-        # Alternate speakers 50/50
-        speaker = "female" if (i % 2 == 0) else "male"
-        voice_pack = voices[speaker]
-
-        # G2P conversion
+        speaker = "female" if i % 2 == 0 else "male"
         phonemes_list, _ = pipe.g2p(text)
         token_ids = [v for v in (teacher_model.vocab.get(p) for p in phonemes_list) if v is not None]
-
-        # Ensure valid length
         if not token_ids or len(token_ids) + 2 > teacher_model.context_length:
+            skipped += 1
             continue
+        examples.append({"text": text, "speaker": speaker, "token_ids": token_ids})
 
-        # Format input_ids with leading and trailing 0 tokens
-        input_ids = torch.LongTensor([[0, *token_ids, 0]]).to(dev)
+    if skipped:
+        print(f"[!] Skipped {skipped:,} empty or over-length sentences")
 
-        # Style reference slice matching sequence length
-        ref = voice_pack[min(len(token_ids) - 1, voice_pack.shape[0] - 1)]
-        if ref.dim() == 1:
-            ref = ref.unsqueeze(0)
-        ref = ref.to(dev)
+    print(f"[*] Generating {len(examples):,} teacher clips into {out_path} "
+          f"(batch size {args.batch_size})...")
+    for batch_start in range(0, len(examples), args.batch_size):
+        batch = examples[batch_start:batch_start + args.batch_size]
+        lengths = torch.tensor([len(item["token_ids"]) + 2 for item in batch], dtype=torch.long)
+        max_length = int(lengths.max().item())
+        input_ids = torch.zeros((len(batch), max_length), dtype=torch.long)
+        refs = []
+        for row, item in enumerate(batch):
+            ids = item["token_ids"]
+            input_ids[row, :len(ids) + 2] = torch.tensor([0, *ids, 0])
+            voice_pack = voices[item["speaker"]]
+            refs.append(voice_pack[min(len(ids) - 1, voice_pack.shape[0] - 1)])
 
+        ref = torch.stack(refs).to(dev)
+        input_ids = input_ids.to(dev)
         with torch.no_grad():
-            audio_tensor, pred_dur = teacher_model.forward_with_tokens(input_ids, ref, speed=1.0)
+            audio_batch, duration_batch = teacher_model.forward_with_tokens(
+                input_ids, ref, speed=1.0, input_lengths=lengths)
 
-        audio_np = audio_tensor.squeeze().float().cpu().numpy()
-        dur_list = pred_dur.squeeze().cpu().tolist()
-        if isinstance(dur_list, int):
-            dur_list = [dur_list]
+        for row, item in enumerate(batch):
+            length = int(lengths[row].item())
+            dur_list = duration_batch[row, :length].cpu().tolist()
+            audio_np = audio_batch[row].float().cpu().numpy()
 
-        # Expected sample length: sum(dur) * 600
-        expected_samples = int(sum(dur_list)) * 600
-        if len(audio_np) < expected_samples:
-            audio_np = np.pad(audio_np, (0, expected_samples - len(audio_np)))
-        else:
-            audio_np = audio_np[:expected_samples]
+            # Expected sample length: sum(dur) * 600
+            expected_samples = int(sum(dur_list)) * 600
+            if len(audio_np) < expected_samples:
+                audio_np = np.pad(audio_np, (0, expected_samples - len(audio_np)))
+            else:
+                audio_np = audio_np[:expected_samples]
 
-        # Quantize to int16
-        audio_i16 = np.clip(audio_np * 32767.0, -32767.0, 32767.0).astype(np.int16)
-        bin_fp.write(audio_i16.tobytes())
+            # Quantize to int16
+            audio_i16 = np.clip(audio_np * 32767.0, -32767.0, 32767.0).astype(np.int16)
+            bin_fp.write(audio_i16.tobytes())
 
-        record = {
-            "ids": input_ids[0].cpu().tolist(),
-            "dur": dur_list,
-            "offset": current_offset,
-            "samples": len(audio_i16),
-            "lang": speaker,       # maps to PACKS[speaker] in train_student.py
-            "speaker": speaker,
-            "text": text
-        }
-        idx_fp.write(json.dumps(record, ensure_ascii=False) + "\n")
+            record = {
+                "ids": input_ids[row, :length].cpu().tolist(),
+                "dur": dur_list,
+                "offset": current_offset,
+                "samples": len(audio_i16),
+                "lang": item["speaker"],  # maps to PACKS[speaker] in train_student.py
+                "speaker": item["speaker"],
+                "text": item["text"]
+            }
+            idx_fp.write(json.dumps(record, ensure_ascii=False) + "\n")
 
-        current_offset += len(audio_i16)
-        generated_count += 1
-        speaker_counts[speaker] += 1
-        total_audio_sec += len(audio_i16) / 24000.0
+            current_offset += len(audio_i16)
+            generated_count += 1
+            speaker_counts[item["speaker"]] += 1
+            total_audio_sec += len(audio_i16) / 24000.0
 
-        if generated_count % 10 == 0 or generated_count == len(sentences):
-            print(f"  [{generated_count}/{len(sentences)}] clips | "
+        if generated_count % 10 == 0 or generated_count == len(examples):
+            print(f"  [{generated_count}/{len(examples)}] clips | "
                   f"Female: {speaker_counts['female']} | Male: {speaker_counts['male']} | "
                   f"Audio: {total_audio_sec:.1f}s", flush=True)
 
